@@ -1,0 +1,25 @@
+{
+  "name": "codex-rulebridge",
+  "version": "1.0.0",
+  "description": "Modular, selectively loaded rules for Codex with optional Claude Code synchronization.",
+  "type": "module",
+  "bin": {
+    "codex-rulebridge": "src/cli.mjs"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "examples",
+    "REAME_FR.md",
+    "assets/logo.png",
+    "docs/live-validation.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/cli.mjs && node --check src/rules.mjs && node --check src/hook.mjs && node --check src/paths.mjs && node --check src/state.mjs && node --check scripts/install.mjs && bash -n install.sh"
+  },
+  "license": "MIT"
+}
