@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.1 (2026-09-29)
+
+- Treat sed commands as opaque so file effects inside expressions cannot bypass scoped rules.
+- Resolve external symlink aliases and existing ancestors of new destinations before excluding paths.
+- Refresh previously delivered rules when their scope changes, including after compaction.
+- Share one preamble per context batch and count it once in the global rule budget.
+- Add regression tests for these cases and lossless UTF-8 batching.
+- Validate all four fixes in real Codex CLI 0.157.1 sessions on macOS; 44 automated tests pass.
+
 ## 1.0.0 (2026-09-27)
 
 - Organize modular Codex rules in `.agents/rules/`, with global and path-scoped Markdown conventions.

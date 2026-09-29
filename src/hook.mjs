@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadRules, renderContext, validateRules, MAX_BYTES } from './rules.mjs';
+import { loadRules, renderRule, CONTEXT_PREAMBLE, validateRules, MAX_BYTES } from './rules.mjs';
 import { toolTargets, matchesPath } from './paths.mjs';
 import { withState, digest } from './state.mjs';
 
@@ -25,7 +25,7 @@ try {
       if (input.source !== 'compact' && input.source !== 'resume') state.active = [];
     }
     const targets = event === 'PreToolUse' ? toolTargets(root, input) : null;
-    const selected = rules.filter(rule => !rule.paths.length || (targets
+    const selected = rules.filter(rule => !rule.paths.length || Object.hasOwn(state.delivered, rule.name) || (targets
       ? targets.opaque || rule.paths.some(glob => targets.targets.some(t => matchesPath(glob, t.path, t.directory)))
       : state.active.includes(rule.name)));
     const pending = selected.filter(rule => state.delivered[rule.name] !== digest(rule.raw));
@@ -38,10 +38,11 @@ try {
     const chunks = [];
     if (event === 'SessionStart' || event === 'SubagentStart') chunks.push(startupGuide);
     if (removed.length) chunks.push('The following previously loaded rules were removed. Stop applying them: ' + removed.join(', '));
+    if (pending.length) chunks.push(CONTEXT_PREAMBLE);
     let size = Buffer.byteLength(chunks.join('\n\n'));
     const delivered = [];
     for (const rule of pending) {
-      const context = renderContext([rule]);
+      const context = renderRule(rule);
       if (size + Buffer.byteLength(context) + 2 > MAX_BYTES) break;
       chunks.push(context); size += Buffer.byteLength(context) + 2; delivered.push(rule);
     }
@@ -57,7 +58,7 @@ try {
     }
     for (const rule of delivered) {
       state.delivered[rule.name] = digest(rule.raw);
-      if (rule.paths.length && !state.active.includes(rule.name)) state.active.push(rule.name);
+      if (!state.active.includes(rule.name)) state.active.push(rule.name);
     }
     for (const name of removed) delete state.delivered[name];
     state.active = state.active.filter(name => present.has(name));

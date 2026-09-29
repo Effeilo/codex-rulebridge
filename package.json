@@ -1,6 +1,6 @@
 {
   "name": "codex-rulebridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Modular, selectively loaded rules for Codex with optional Claude Code synchronization.",
   "type": "module",
   "bin": {

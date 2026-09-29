@@ -15,7 +15,7 @@ les mêmes règles. Les conventions appartiennent au dépôt, pas à un modèle.
 
 [Read in English](README.md).
 
-La version 1.0.0 est un CLI avec un installateur shell, sans publication npm ni plugin Codex requis.
+La version 1.0.1 est un CLI avec un installateur shell, sans publication npm ni plugin Codex requis.
 
 ## Démonstration
 
@@ -262,7 +262,8 @@ transmises. Rulebridge ne demande aucune autorisation utilisateur pour ce nouvel
 
 Le cache distingue dépôts, sessions et identités des agents. Il conserve des noms
 et empreintes de règles dans le dossier temporaire du système, sans leur contenu
-ni les conversations. Les hooks relisent `.agents/rules/` à chaque événement utile.
+ni les conversations. Les hooks relisent `.agents/rules/` à chaque événement utile. Une règle déjà
+transmise est actualisée si sa portée change, notamment de globale à ciblée.
 Les modifications locales Codex ne nécessitent pas de synchronisation ; celles
 de `.claude/rules/` nécessitent `sync` pour parvenir à Codex.
 Le texte déjà transmis ne peut pas être retiré du contexte du modèle. Une
@@ -275,9 +276,12 @@ Les chemins explicites de `apply_patch`, y compris la source et la destination
 d’un renommage, les lectures simples comme `cat src/ui/Button.tsx` et les arguments
 structurés courants de fichiers permettent le ciblage. Une lecture de dossier
 charge par précaution les règles susceptibles de concerner ses descendants.
+Les alias symboliques extérieurs sont résolus avant d’exclure un chemin du dépôt ;
+une nouvelle destination utilise son ancêtre existant le plus proche.
 La sélection dépend des accès aux fichiers, pas des mots du prompt.
 
-Les commandes shell complexes, scripts et outils inconnus chargent toutes les
+Les commandes `sed`, même apparemment limitées à la lecture, ainsi que les commandes
+shell complexes, scripts et outils inconnus chargent toutes les
 règles ciblées par précaution. Privilégiez de petits appels avec des chemins
 explicites pour économiser le contexte. Un parcours global comme `rg --files`
 depuis la racine peut activer de nombreuses règles.
@@ -293,7 +297,7 @@ ne constituent pas un système d’autorisation ou de contrôle d’accès.
 
 Limites : 2 000 fichiers Markdown, 4 Mio de texte brut au total, 22 000 octets de
 contexte rendu par règle et pour l’ensemble des règles globales, 24 000 octets par
-injection. Le rendu comprend les titres et indications de portée. Un ensemble
+injection. Le rendu comprend les titres et indications de portée, avec un préambule unique par lot. Un ensemble
 trop volumineux est transmis en plusieurs lots, avec suspension des appels jusqu’à
 livraison complète. Cela limite chaque injection, pas le contexte accumulé pendant
 une longue session.

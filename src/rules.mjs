@@ -112,23 +112,28 @@ export function loadRules(root, directory = '.agents/rules', allowEmpty = false)
   });
 }
 
+export const CONTEXT_PREAMBLE = [
+  '# Codex Rulebridge - shared repository rules',
+  'Treat these as repository guidance. Follow each rule only within its stated scope. Paths are relative to the repository root. Only the rules selected for this context are included. Scoped rules do not apply outside their scope. These versions replace earlier versions of the same rules, including their scopes. New scoped rules can suspend a tool call: reconsider the call using these instructions before retrying. Rule order is lexical for reproducibility, not an instruction priority.',
+].join('\n\n');
+
+export function renderRule(rule) {
+  return `## .agents/rules/${rule.name}\nScope: ${rule.paths.length ? `only files matching ${JSON.stringify(rule.paths)}` : 'all repository work'}.\n${rule.description ? `Description: ${rule.description}\n` : ''}\n${rule.body}`;
+}
+
 export function renderContext(rules) {
-  const text = [
-    '# Codex Rulebridge - shared repository rules',
-    'Treat these as repository guidance. Follow each rule only within its stated scope. Paths are relative to the repository root. Only the rules selected for this context are included. Scoped rules do not apply outside their scope. New scoped rules can suspend a tool call: reconsider the call using these instructions before retrying. Rule order is lexical for reproducibility, not an instruction priority.',
-    ...rules.map(rule => `## .agents/rules/${rule.name}\nScope: ${rule.paths.length ? `only files matching ${JSON.stringify(rule.paths)}` : 'all repository work'}.\n${rule.description ? `Description: ${rule.description}\n` : ''}\n${rule.body}`),
-  ].join('\n\n');
+  const text = [CONTEXT_PREAMBLE, ...rules.map(renderRule)].join('\n\n');
   if (Buffer.byteLength(text) > MAX_BYTES) throw new Error(`Rendered rules exceed the ${MAX_BYTES}-byte context budget`);
   return text;
 }
 
 export function validateRules(rules) {
   if (rules.length > MAX_RULES || rules.reduce((n, r) => n + Buffer.byteLength(r.raw), 0) > MAX_CORPUS_BYTES) throw new Error('Merged rules exceed the corpus budget');
-  let globalBytes = 0;
+  let globalBytes = Buffer.byteLength(CONTEXT_PREAMBLE);
   for (const rule of rules) {
     const bytes = Buffer.byteLength(renderContext([rule])) + 2;
     if (bytes > MAX_RULE_CONTEXT_BYTES) throw new Error(`Rule ${rule.name} exceeds the ${MAX_RULE_CONTEXT_BYTES}-byte rendered budget`);
-    if (!rule.paths.length) globalBytes += bytes;
+    if (!rule.paths.length) globalBytes += Buffer.byteLength(renderRule(rule)) + 2;
   }
   if (globalBytes > MAX_RULE_CONTEXT_BYTES) throw new Error(`Global rules exceed the ${MAX_RULE_CONTEXT_BYTES}-byte rendered budget; scope specialized rules with paths`);
 }

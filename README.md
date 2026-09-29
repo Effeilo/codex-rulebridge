@@ -14,7 +14,7 @@ Rules belong to the repository, not to a particular model.
 
 [Lire en français](REAME_FR.md).
 
-Version 1.0.0 is a CLI with a shell installer, with no npm publication or Codex plugin required.
+Version 1.0.1 is a CLI with a shell installer, with no npm publication or Codex plugin required.
 
 ## Demo
 
@@ -243,7 +243,8 @@ Rulebridge for that retry.
 
 The cache separates repositories, sessions and subagent identities. It stores rule
 names and hashes under the OS temporary directory, not rule bodies or transcripts.
-Hooks reread `.agents/rules/` on each relevant event. No sync is needed for local
+Hooks reread `.agents/rules/` on each relevant event. Previously delivered rules
+are refreshed when their scope changes, including from global to path-scoped. No sync is needed for local
 Codex rule edits; Claude-side edits require `sync` to reach Codex.
 Already delivered text cannot be erased from model context. Removed rules trigger
 a notice; start a fresh session after major convention changes.
@@ -253,10 +254,12 @@ a notice; start a fresh session after major convention changes.
 Explicit `apply_patch` targets (including rename source and destination), simple
 read commands such as `cat src/ui/Button.tsx`, and common structured file/path
 arguments support selective matching. Directory reads conservatively include
-rules that could apply to descendants. This is based on file access, not keywords
-in the user's prompt.
+rules that could apply to descendants. External symlink aliases are resolved before excluding paths outside the repository;
+new destinations use their nearest existing ancestor. This is based on file access,
+not keywords in the user's prompt.
 
-Complex shell commands, scripts and unknown tools fall back to loading all scoped
+`sed` commands (including seemingly read-only expressions), complex shell commands,
+scripts and unknown tools fall back to loading all scoped
 rules. Prefer small calls with explicit paths to retain the context savings.
 Broad scans such as `rg --files` from the root can activate many scopes.
 
@@ -270,7 +273,7 @@ Rules guide the model; they are not an authorization or enforcement boundary.
 
 Limits: 2,000 Markdown files, 4 MiB total raw corpus, 22,000 bytes of rendered
 context per rule and for all global rules combined, and 24,000 bytes per hook
-context. Rendering includes headings and scope labels. A large matched set loads
+context. Rendering includes headings and scope labels, with one shared preamble per batch. A large matched set loads
 in successive batches, suspending tool calls until delivery is complete. This
 bounds individual payloads, not the accumulated context of a long session.
 

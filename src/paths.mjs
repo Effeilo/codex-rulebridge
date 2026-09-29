@@ -56,8 +56,30 @@ export function matchesPath(pattern, file, directory = false) {
 }
 function target(root, cwd, name) {
   if (typeof name !== 'string' || !name || name.includes('\0')) return null;
-  const absolute = path.resolve(cwd, name);
-  const relative = path.relative(root, absolute);
+  let absolute = path.resolve(cwd, name);
+  let relative = path.relative(root, absolute);
+  if (relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)) {
+    // Resolve external aliases before excluding them. For a future file, resolve
+    // its nearest existing ancestor and append the missing suffix.
+    let ancestor = absolute;
+    const suffix = [];
+    while (true) {
+      try {
+        absolute = path.join(fs.realpathSync(ancestor), ...suffix);
+        break;
+      } catch (error) {
+        if (error.code !== 'ENOENT') return { opaque: true };
+        // A dangling symlink is uncertain, not a proven external path.
+        try { if (fs.lstatSync(ancestor).isSymbolicLink()) return { opaque: true }; }
+        catch (e) { if (e.code !== 'ENOENT') return { opaque: true }; }
+        const parent = path.dirname(ancestor);
+        if (parent === ancestor) return { opaque: true };
+        suffix.unshift(path.basename(ancestor));
+        ancestor = parent;
+      }
+    }
+    relative = path.relative(fs.realpathSync(root), absolute);
+  }
   if (relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)) return null;
   // Do not miss an in-repo alias to a different path; conservatively load all.
   let cursor = root;
@@ -102,9 +124,11 @@ export function toolTargets(root, input) {
     const words = shellWords(args.command ?? args.cmd ?? '');
     if (!words?.length) return { targets: [], opaque: true };
     const cmd = words.shift();
-    if (!['cat', 'head', 'tail', 'sed', 'rg', 'grep', 'ls', 'pwd'].includes(cmd)) return { targets: [], opaque: true };
+    // sed scripts can read/write files or execute commands within the expression.
+    // Keep them opaque rather than inferring effects from positional arguments.
+    if (!['cat', 'head', 'tail', 'rg', 'grep', 'ls', 'pwd'].includes(cmd)) return { targets: [], opaque: true };
     if (cmd === 'pwd') return { targets: [], opaque: words.length > 0 };
-    const names = []; let pattern = ['sed', 'rg', 'grep'].includes(cmd); let options = true;
+    const names = []; let pattern = ['rg', 'grep'].includes(cmd); let options = true;
     for (let i = 0; i < words.length; i++) {
       const word = words[i];
       if (options && word === '--') { options = false; continue; }

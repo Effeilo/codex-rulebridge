@@ -122,3 +122,37 @@ batched delivery, simulated compaction/resume events, subagent identities,
 concurrent cache updates and opt-in Claude sharing. These are simulated hook
 payloads, not live validation of those Codex lifecycle events. Native Claude
 matching, parallel model actions, Linux/WSL and the desktop client remain untested.
+
+## Version 1.0.1 fixes: real sessions on 2026-09-28
+
+Environment: macOS, Codex CLI 0.157.1, configured GPT-6-Astra low. The corrected
+runtime was installed into a disposable Git repository. A wrapper logged hook
+stdin/stdout and forwarded the runtime output unchanged. Expected marker strings
+were supplied only through rules, not user prompts.
+
+- **sed expression writes:** a real `codex exec` session ran
+  `sed -n 'w src/api/out.ts' src/ui/in.ts`. The first attempt was denied with both
+  API and UI guidance; the retry received no duplicate context and succeeded.
+  The destination contained the source text, and the response included the API
+  rule's random marker.
+- **External symlink:** another real `codex exec` session read the exact absolute
+  path through an alias outside the repository. The first attempt loaded only
+  the API scoped rule and was denied; the retry succeeded without duplicate
+  context. Codex reported the file's value and the API marker.
+- **Shared preamble:** the sed hook delivered 21 scoped rules in 2,972 UTF-8 bytes,
+  with exactly one shared preamble. This was captured from a real tool invocation.
+- **Global to scoped, same session:** an interactive CLI session first answered
+  `READY SCOPE_GLOBAL_72a9`, following a global rule. While that session remained
+  open, the rule was changed to apply only to `src/api/**`. At the next UI-only
+  prompt, `UserPromptSubmit` delivered its new scope and replacement notice.
+  Codex explained a button without the old global marker. The session transcript
+  confirmed the replacement context and both responses; no model tools were used
+  for these two turns.
+
+All sessions used the physical project path, normal user config, workspace-write
+sandbox, and the invocation-only hook-trust bypass for these reviewed fixture
+hooks. No persisted user trust configuration was changed. These tests validate
+CLI delivery and observed model behavior for the reported cases. They do not
+extend coverage to the desktop client, Windows/WSL, live compaction, subagents,
+or already prepared parallel tool calls. External aliases to not-yet-created
+files remain covered by automated integration tests, not this live read test.

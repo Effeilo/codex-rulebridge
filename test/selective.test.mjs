@@ -198,3 +198,82 @@ test('Codex-only init does not recreate deliberately removed last rule', t => {
   assert.equal(fs.existsSync(path.join(f.root, '.agents/rules/general.md')), false);
   assert.equal(f.run('check').status, 0);
 });
+
+test('sed script writes load destination rules before execution', t => {
+  const f = fixture(t);
+  f.put('.agents/rules/ui.md', scoped('src/ui/**', 'UI_RULE'));
+  f.put('.agents/rules/api.md', scoped('src/api/**', 'API_RULE'));
+  f.run('init'); f.hook('SessionStart');
+  const call = { tool_name: 'Bash', tool_input: { command: "sed -n 'w src/api/out.ts' src/ui/in.ts" } };
+  const result = f.hook('PreToolUse', call);
+  assert.equal(result.permissionDecision, 'deny');
+  assert.match(result.additionalContext, /API_RULE/);
+  assert.match(result.additionalContext, /UI_RULE/);
+  assert.equal(f.hook('PreToolUse', call).permissionDecision, undefined);
+});
+
+test('external aliases resolve existing files and future destinations into repository scopes', t => {
+  const f = fixture(t);
+  const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rulebridge-alias-')));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.symlinkSync(f.root, path.join(outside, 'alias'), 'dir');
+  f.put('src/api/x.ts', 'source');
+  f.put('.agents/rules/api.md', scoped('src/api/**', 'API_RULE'));
+  f.put('.agents/rules/ui.md', scoped('src/ui/**', 'UI_RULE'));
+  f.run('init'); f.hook('SessionStart');
+  for (const name of ['x.ts', 'new/deep.ts']) {
+    const target = path.join(outside, 'alias/src/api', name);
+    const call = { tool_name: 'mcp__fs__read', tool_input: { path: target } };
+    assert.deepEqual(toolTargets(f.root, { cwd: f.root, ...call }).targets, [{ path: 'src/api/' + name, directory: false }]);
+    const result = f.hook('PreToolUse', { ...call, session_id: randomUUID() });
+    assert.equal(result.permissionDecision, 'deny');
+    assert.match(result.additionalContext, /API_RULE/);
+    assert.doesNotMatch(result.additionalContext, /UI_RULE/);
+  }
+  fs.writeFileSync(path.join(outside, 'external.ts'), 'outside');
+  assert.deepEqual(toolTargets(f.root, { tool_name: 'Read', tool_input: { path: path.join(outside, 'external.ts') } }), { targets: [], opaque: false });
+});
+
+test('a delivered global rule narrowed to a scope refreshes at the next prompt', t => {
+  const f = fixture(t);
+  f.put('.agents/rules/team.md', 'OLD_GLOBAL'); f.run('init');
+  assert.match(f.hook('SessionStart').additionalContext, /OLD_GLOBAL/);
+  f.put('.agents/rules/team.md', scoped('src/api/**', 'NEW_SCOPED'));
+  const result = f.hook('UserPromptSubmit');
+  assert.match(result.additionalContext ?? '', /NEW_SCOPED/);
+  assert.match(result.additionalContext, /only files matching.*src\/api/);
+  assert.match(result.additionalContext, /replace.*earlier/i);
+  assert.equal(f.hook('UserPromptSubmit').additionalContext, undefined);
+});
+
+test('a batch uses one shared preamble and retains every short rule', t => {
+  const f = fixture(t);
+  for (let i = 0; i < 20; i++) f.put(`.agents/rules/rule${i}.md`, scoped('src/**', `RULE_${i}_END`));
+  f.run('init'); f.hook('SessionStart');
+  const call = { tool_name: 'Bash', tool_input: { command: 'cat src/a.ts' } };
+  const result = f.hook('PreToolUse', call);
+  assert.equal(result.permissionDecision, 'deny');
+  assert.equal(result.additionalContext.match(/# Codex Rulebridge - shared repository rules/g)?.length, 1);
+  for (let i = 0; i < 20; i++) assert.match(result.additionalContext, new RegExp(`RULE_${i}_END`));
+  assert(Buffer.byteLength(result.additionalContext) < 4000);
+  assert.equal(f.hook('PreToolUse', call).additionalContext, undefined);
+});
+
+test('scope narrowing survives compaction and batches preserve all UTF-8 rules', t => {
+  const f = fixture(t);
+  f.put('.agents/rules/global.md', 'Initially global'); f.run('init'); f.hook('SessionStart');
+  f.hook('PostCompact');
+  f.put('.agents/rules/global.md', scoped('src/api/**', 'NOW_LOCAL'));
+  assert.match(f.hook('SessionStart', { source: 'compact' }).additionalContext, /NOW_LOCAL/);
+  for (let i = 0; i < 8; i++) f.put(`.agents/rules/large${i}.md`, scoped('src/ui/**', `MARK_${i}_END ` + 'é'.repeat(4000)));
+  const seen = [];
+  let allowed = false;
+  for (let i = 0; i < 10; i++) {
+    const out = f.hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'cat src/ui/file.ts' } });
+    if (!out.permissionDecision) { allowed = true; break; }
+    assert(Buffer.byteLength(out.additionalContext) <= 24000);
+    assert.equal(out.additionalContext.match(/# Codex Rulebridge - shared repository rules/g)?.length, 1);
+    seen.push(...[...out.additionalContext.matchAll(/MARK_(\d)_END/g)].map(m => Number(m[1])));
+  }
+  assert(allowed); assert.deepEqual(seen.sort(), [0, 1, 2, 3, 4, 5, 6, 7]);
+});
